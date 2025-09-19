@@ -22,6 +22,22 @@
       color: gray;
       font-size: 0.7em;
     }
+    footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background-color: #f8f9fa;
+      border-top: 1px solid #dee2e6;
+      padding: 10px 20px;
+      text-align: center;
+      font-size: 0.9em;
+      color: #6c757d;
+      z-index: 1000;
+    }
+    body {
+      padding-bottom: 60px; /* フッターの高さ分の余白を追加 */
+    }
   </style>
 </head>
 <body>
@@ -73,6 +89,7 @@
       </div>
     </section>
   </div>
+
 
   <script>
     
@@ -233,5 +250,11 @@ Cさん,"生徒","弟子",`)
 }).mount('#app')
 
   </script>
+  
+  <footer>
+    <a href="https://github.com/sheep-works/micro-tools" target="_blank" rel="noopener noreferrer">
+      GitHub: sheep-works/micro-tools
+    </a>
+  </footer>
 </body>
 </html>
