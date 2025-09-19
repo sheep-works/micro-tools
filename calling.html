@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>呼称チェッカー</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    textarea {
+      width: 100%;
+      font-family: monospace;
+    }
+    select {
+      margin: 0 10px;
+    }
+    section {
+      margin-top: 20em;
+      color: gray;
+      font-size: 0.7em;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h2>呼称表（CSV、Excel、スプレッドシートなど）を貼り付け</h2>
+
+    <textarea v-model="csvInput" rows="8" placeholder="CSV形式で入力してください"></textarea>
+    <br />
+    <button @click="parseCSV">更新</button>
+
+    <hr />
+
+    <div v-if="names.length" style="margin-top: 20px;">
+
+      <label>呼ぶ側：</label>
+      <input list="nameList" v-model="caller" placeholder="名前を入力または選択" />
+
+      <label style="margin-left: 10px;">呼ばれる側：</label>
+      <input list="nameList" v-model="callee" placeholder="名前を入力または選択" />
+
+      <datalist id="nameList">
+        <option v-for="name in names" :key="name" :value="name" />
+      </datalist>
+
+      <button style="margin-left: 10px;" @click="clearInputs">入力をクリア</button>
+    
+
+
+       <p v-if="caller && callee">
+         {{ caller }}が{{ callee }}を呼ぶとき：<strong>{{ getTitle(caller, callee) }}</strong>
+       </p>
+       
+       <div v-if="titleResults.length > 0" style="margin-top: 20px;">
+         <h3>履歴 <button @click="clearHistory" style="font-size: 0.8em; margin-left: 10px;">履歴をクリア</button></h3>
+         <ul>
+           <li v-for="(result, index) in titleResults" :key="result.timestamp" style="display: flex; align-items: center; margin: 5px 0;">
+             <span style="flex: 1;">{{ result.caller }}が{{ result.callee }}を呼ぶとき：<strong>{{ result.title }}</strong> ({{ result.timestamp }})</span>
+             <button @click="removeHistoryItem(index)" style="margin-left: 10px; background: #ff4444; color: white; border: none; border-radius: 3px; padding: 2px 6px; cursor: pointer;">×</button>
+           </li>
+         </ul>
+       </div>
+    </div>
+
+    <section>
+      <hr />
+      <h2 @click="isDispData = !isDispData">データを確認したいときはここをクリック</h2>
+      <div v-if="isDispData">
+        {{ data }}
+      </div>
+    </section>
+  </div>
+
+  <script>
+    
+const { createApp, ref } = Vue
+
+createApp({
+  setup() {
+    const csvInput = ref(`,Aさん,Bさん,Cさん
+Aさん,,兄貴,"先生
+（英語）"
+Bさん,弟,,"師匠"
+Cさん,"生徒","弟子",`)
+
+     const data = ref({})
+     const names = ref([])
+     const caller = ref('')
+     const callee = ref('')
+     const titleResults = ref([])
+
+     const isDispData = ref(false)
+    
+    const normalize = (str) =>
+      str
+        .replace(/\r?\n/g, '')  // 改行削除
+        .replace(/\s+/g, '')    // 空白削除
+        .trim()
+
+    const parseCSV = () => {
+      const raw = csvInput.value.replaceAll('\t', ',')
+      const rows = []
+      let current = ''
+      let insideQuote = false
+
+      for (const line of raw.split(/\r?\n/)) {
+        const quoteCount = (line.match(/"/g) || []).length
+        current += (current ? '\n' : '') + line
+        insideQuote ^= quoteCount % 2 !== 0
+        if (!insideQuote) {
+          rows.push(current)
+          current = ''
+        }
+      }
+
+      if (rows.length < 2) return
+
+      const headers = parseCSVLine(rows[0]).slice(1) // 呼ばれる側
+      const result = {}
+
+      for (let i = 1; i < rows.length; i++) {
+        const cells = parseCSVLine(rows[i])
+        const rowName = normalize(cells[0]) // 呼ぶ側（正規化）
+        const values = cells.slice(1)
+
+        result[rowName] = {}
+        values.forEach((val, idx) => {
+          const colName = normalize(headers[idx]) // 呼ばれる側（正規化）
+          if (colName && val) {
+            result[rowName][colName] = val
+          }
+        })
+      }
+
+      data.value = result
+      names.value = Object.keys(result)
+      caller.value = ''
+      callee.value = ''
+    }
+
+
+
+    const parseCSVLine = (line) => {
+      const result = []
+      let current = ''
+      let insideQuote = false
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i]
+        if (char === '"') {
+          if (insideQuote && line[i + 1] === '"') {
+            current += '"'
+            i++
+          } else {
+            insideQuote = !insideQuote
+          }
+        } else if (char === ',' && !insideQuote) {
+          result.push(current)
+          current = ''
+        } else {
+          current += char
+        }
+      }
+      result.push(current)
+      return result
+    }
+
+
+     const getTitle = (caller, callee) => {
+       const title = data.value[caller]?.[callee] || '（！呼称なし！）'
+       
+       // 呼称がある場合のみ履歴に追加
+       if (title !== '（！呼称なし！）') {
+         // 履歴の一番上と同じ結果でない場合のみ追加
+         const latestResult = titleResults.value[0]
+         if (!latestResult || 
+             latestResult.caller !== caller || 
+             latestResult.callee !== callee || 
+             latestResult.title !== title) {
+           titleResults.value.unshift({
+             caller: caller,
+             callee: callee,
+             title: title,
+             timestamp: new Date().toLocaleTimeString()
+           })
+           
+           // 10件を超えたら古いものを削除
+           if (titleResults.value.length > 10) {
+             titleResults.value = titleResults.value.slice(0, 10)
+           }
+         }
+       }
+       
+       return title
+     }
+
+    
+     const clearInputs = () => {
+       caller.value = ''
+       callee.value = ''
+     }
+
+     const clearHistory = () => {
+       titleResults.value = []
+       clearInputs()
+     }
+
+     const removeHistoryItem = (index) => {
+       titleResults.value.splice(index, 1)
+     }
+
+
+    parseCSV()
+
+     return {
+       csvInput,
+       parseCSV,
+       names,
+       caller,
+       callee,
+       getTitle,
+       clearInputs,
+       clearHistory,
+       removeHistoryItem,
+       data,
+       isDispData,
+       titleResults,
+     }
+  }
+}).mount('#app')
+
+  </script>
+</body>
+</html>
